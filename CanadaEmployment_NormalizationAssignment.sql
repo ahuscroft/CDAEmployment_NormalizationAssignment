@@ -3,7 +3,7 @@ USE CANADA
 ALTER TABLE [Cda_employmentrate_1990to1999_RawData]
 ADD EmploymentID INT IDENTITY (1,1);
 
---Code to create new tables from raw data to achieve 2NF & 3NF--
+--Code to create new tables from raw data to achieve 2NF--
 SELECT EmploymentType 
 INTO  EmploymentTypeNew
 FROM [Cda_employmentrate_1990to1999_RawData];
@@ -26,15 +26,15 @@ SELECT Year,
 INTO Provinces
 FROM [Cda_employmentrate_1990to1999_RawData];
 
-SELECT Year, Month
-INTO TimeTable
+SELECT Year
+INTO YearTable
 FROM [Cda_employmentrate_1990to1999_RawData];
 
 SELECT Month 
 INTO MonthTable
 FROM TimeTable;
 
---Code to delete duplicates--
+--Code to delete duplicates to achieve 2 NF--
 WITH cte AS (
 SELECT EmploymentType, ROW_NUMBER () OVER (
 PARTITION BY EmploymentType
@@ -56,17 +56,17 @@ DELETE FROM cte
 WHERE row_num>1;
 
 WITH cte AS (
-SELECT Year, Month, ROW_NUMBER () OVER (
-PARTITION BY Year, Month
-ORDER BY Year, Month
+SELECT Year, ROW_NUMBER () OVER (
+PARTITION BY Year
+ORDER BY Year
 ) row_num
-FROM TimeTable
+FROM YearTable
 )
 DELETE FROM cte
 WHERE row_num>1;
 
 WITH cte AS (
-SELECT MONTH, ROW_NUMBER () OVER (
+SELECT Month, ROW_NUMBER () OVER (
 PARTITION BY Month
 ORDER BY Month
 ) row_num
@@ -75,6 +75,7 @@ FROM MonthTable
 DELETE FROM cte
 WHERE row_num>1;
 
+--Codes to achieve 3NF--
 --Alter tables to add new column--
 ALTER TABLE Gender
 ADD SexUniqueID INT;
@@ -91,8 +92,8 @@ ADD SexID INT;
 ALTER TABLE Provinces
 ADD EmployProvinceID INT IDENTITY (1,1);
 
-ALTER TABLE TimeTable
-ADD TimeID INT IDENTITY (1,1);
+ALTER TABLE YearTable
+ADD YearID INT IDENTITY (1,1);
 
 ALTER TABLE MonthTable
 ADD MonthID INT IDENTITY (1,1);
@@ -140,15 +141,7 @@ SET SexID = CASE
 	ELSE 0
 	END
 
---Drop Columns--
-ALTER TABLE Provinces
-DROP COLUMN EmploymentType;
-
-ALTER TABLE Provinces
-DROP COLUMN Sex;
-
---Case Statement for TimeTable--
-UPDATE TimeTable
+UPDATE Provinces
 SET Month = CASE
 	WHEN Month = 'January' THEN 1
 	WHEN Month = 'February' THEN 2
@@ -165,8 +158,35 @@ SET Month = CASE
 	ELSE 0
 	END;
 
-ALTER TABLE TimeTable
-ALTER COLUMN Month INT;
+UPDATE Provinces
+SET Year = CASE
+	WHEN Year = '1990' THEN 1
+	WHEN Year = '1991' THEN 2
+	WHEN Year = '1992' THEN 3
+	WHEN Year = '1993' THEN 4
+	WHEN Year = '1994' THEN 5
+	WHEN Year = '1995' THEN 6
+	WHEN Year = '1996' THEN 7
+	WHEN Year = '1997' THEN 8
+	WHEN Year = '1998' THEN 9
+	WHEN Year = '1999' THEN 10
+	ELSE 0
+	END;
+
+--Drop Columns--
+ALTER TABLE Provinces
+DROP COLUMN EmploymentType;
+
+ALTER TABLE Provinces
+DROP COLUMN Sex;
+
+--Alter Column Names--
+EXEC sp_rename 'Provinces.Month', 'MonthID', 'COLUMN';
+EXEC sp_rename 'Provinces.Year', 'YearID', 'COLUMN';
+
+--Alter Data Type--
+ALTER TABLE Provinces
+ALTER COLUMN MonthID INT;
 
 --Assign NOT NULL Constraint--
 ALTER TABLE Gender
@@ -176,17 +196,14 @@ ALTER COLUMN SexUniqueID INT NOT NULL;
 ALTER TABLE Provinces
 ADD CONSTRAINT PK_EmployProvinceID PRIMARY KEY (EmployProvinceID);
 
-ALTER TABLE TimeTable
-ADD CONSTRAINT PK_TimeID PRIMARY KEY (TimeID);
+ALTER TABLE YearTable
+ADD CONSTRAINT PK_YearID PRIMARY KEY (YearID);
 
 ALTER TABLE MonthTable
 ADD CONSTRAINT PK_MonthID PRIMARY KEY (MonthID);
 
 ALTER TABLE Gender
 ADD CONSTRAINT PK_SexUniqueID PRIMARY KEY (SexUniqueID);
-
-ALTER TABLE YearTable
-ADD Primary Key (YearID);
 
 --Assign Foreign Keys--
 ALTER TABLE Provinces
@@ -197,21 +214,32 @@ ALTER TABLE Provinces
 ADD CONSTRAINT FK_SexID FOREIGN KEY (SexID)
 REFERENCES Gender (SexUniqueID);
 
-ALTER TABLE TimeTable
-ADD CONSTRAINT FK_Month FOREIGN KEY (Month)
+ALTER TABLE Provinces
+ADD CONSTRAINT FK_YearID FOREIGN KEY (YearID)
+REFERENCES YearTable (YearID);
+
+ALTER TABLE Provinces
+ADD CONSTRAINT FK_MonthID FOREIGN KEY (MonthID)
 REFERENCES MonthTable (MonthID);
 
---Create Join--
-SELECT Provinces.Ontario,
+--Create Join query to determine the employment rate of men who were employed full-tim in January, 1990--
+SELECT YearTable.Year,
+		MonthTable.Month,
 		EmploymentTypeNew.EmploymentType,
-		Gender.Sex
+		Gender.Sex,
+		Provinces.Ontario
 INTO OntarioEmploymentResult
 FROM Provinces
 INNER JOIN EmploymentTypeNew
 ON Provinces.EmploymentID = EmploymentTypeNew.EmploymentID
 INNER JOIN Gender
 ON Provinces.SexID = Gender.SexUniqueID
-WHERE Provinces.EmploymentID = 3 AND Gender.Sex = 'Males';
+INNER JOIN YearTable
+ON Provinces.YearID = YearTable.YearID
+INNER JOIN MonthTable
+ON Provinces.MonthID = MonthTable.MonthID
+WHERE Provinces.EmploymentID = 3 AND Gender.Sex = 'Males' AND YearTable.Year = '1990' AND MonthTable.Month = 'January';
+
 
 --SELECT Statements--
 SELECT * FROM [Cda_employmentrate_1990to1999_RawData];
@@ -219,8 +247,13 @@ SELECT * FROM EmploymentTypeNew;
 SELECT * FROM Provinces;
 SELECT * FROM Gender;
 SELECT * FROM TimeTable;
+SELECT * FROM YearTable;
 SELECT * FROM MonthTable;
+SELECT * FROM Provinces;
 SELECT * FROM OntarioEmploymentResult;
+
+--DROP Statements--
+DROP TABLE OntarioEmploymentResult;
 
 
 
